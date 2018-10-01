@@ -129,7 +129,7 @@ thread_start (void)
 
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context.
-   Also wakes up (puts a thread from sleepers_list to ready_list)
+   Also wakes up (puts a thread from sleepers_list to ready_list) 
    if the current tick is a next_wakeup_at. */
 void
 thread_tick (void) 
@@ -244,6 +244,10 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  
+  /* We should yield to the added thread if it has a higher priority than
+     the current thread.*/
+  thread_yield ();
 
   return tid;
 }
@@ -257,7 +261,8 @@ priority_cmp (const struct list_elem *a, const struct list_elem *b,
   struct thread *ta = list_entry (a, struct thread, elem);
   struct thread *tb = list_entry (b, struct thread, elem);
 
-  return ta->priority > tb->priority;
+  return thread_get_effective_priority (ta) >
+    thread_get_effective_priority (tb);
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -293,7 +298,8 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_insert_ordered (&ready_list, &t->elem, priority_cmp, NULL);
+  /* list_insert_ordered (&ready_list, &t->elem, priority_cmp, NULL); */
+  list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -431,7 +437,9 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_insert_ordered (&ready_list, &cur->elem, priority_cmp, NULL);
+    /* list_insert_ordered (&ready_list, &cur->elem, priority_cmp, NULL); */
+    list_push_back (&ready_list, &cur->elem);
+
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -484,14 +492,55 @@ thread_priority_restore()
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  struct thread *t = thread_current ();
+  int cur_priority = t->priority;
+
+  /* Thread must yield to higher priority thread if it exists, whenever its
+     own priority decreases. */
+  t->priority = new_priority;
+  if(new_priority < cur_priority)
+    thread_yield ();
 }
 
-/* Returns the current thread's priority. */
+/* Returns the current thread's effective priority. */
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  return thread_get_effective_priority (thread_current ());
+}
+
+/* Returns effective priroty of the thread (after donation). */
+int
+thread_get_effective_priority (struct thread *t)
+{
+  if(!list_empty (&t->locks_acquired))
+  {
+    int max_priority = t->priority;
+    for (struct list_elem *e = list_begin (&t->locks_acquired);
+         e != list_end (&t->locks_acquired);
+         e = list_next (e))
+    {
+      struct lock *l = list_entry (e, struct lock, elem);
+      struct list *waiters = &l->semaphore.waiters;
+
+      if(!list_empty (waiters))
+      {
+        for (struct list_elem *f = list_begin (waiters);
+             f != list_end (waiters);
+             f = list_next (f))
+        {
+          struct thread *h = list_entry(f, struct thread, elem);
+          int ep = thread_get_effective_priority(h);
+          if(ep > max_priority)
+            max_priority = ep;
+        }
+      }
+    }
+
+    return max_priority;
+  }
+  else
+    return t->priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -612,9 +661,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->old_priority = priority;
   t->wakeup_at = -1;
   /* t->wakeup's initial value is never used, since whenever the thread will
-     call timer_sleep this vairable will be changes and it is never used before
+     call timer_sleep this variable will be changes and it is never used before
      that */
   t->magic = THREAD_MAGIC;
+  list_init (&t->locks_acquired);
   list_push_back (&all_list, &t->allelem);
 }
 
@@ -642,7 +692,11 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
     return idle_thread;
   else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  {
+    struct list_elem *e = list_min (&ready_list, priority_cmp, NULL);
+    list_remove (e);
+    return list_entry (e, struct thread, elem);
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
