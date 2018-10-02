@@ -125,13 +125,17 @@ sema_up (struct semaphore *sema)
       thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
     */
-}
+  }
   sema->value++;
   intr_set_level (old_level);
 
   /* The thread unblocked might have higher priority than the current thread.
      We must yield to that thread in this case. */
-  thread_yield();
+  struct thread *cur = thread_current ();
+  if (cur->no_yield == false)
+    thread_yield();
+  else
+    cur->no_yield = false;
 }
 
 static void sema_test_helper (void *sema_);
@@ -324,7 +328,7 @@ cond_wait (struct condition *cond, struct lock *lock)
 /* Comparision function used for getting the semaphore element corresponding
    to highest priority in condition wait list. */
 bool
-cond_cmp (struct list_elem *a, struct list_elem *b, void *aux)
+cond_cmp (struct list_elem *a, struct list_elem *b, void *aux UNUSED)
 {
   struct semaphore_elem *ma = list_entry (a, struct semaphore_elem, elem);
   struct semaphore_elem *mb = list_entry (b, struct semaphore_elem, elem);

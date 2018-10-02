@@ -89,6 +89,9 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     int old_priority;                   /* Old Priority. */
+    int nice;                           /* Nice Value. */
+    int recent_cpu;                     /* Approximation of recent
+                                           cpu time used by this thread. */
     int64_t wakeup_at;                  /* Time to wait before unblock. */
     struct list_elem allelem;           /* List element for all threads list. */
 
@@ -104,7 +107,8 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
     struct list locks_acquired;         /* List of locks acquired by a thread */
-  };
+    bool no_yield;
+};
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -124,7 +128,7 @@ void thread_block (void);
 void thread_unblock (struct thread *);
 
 void thread_block_till (int64_t);
-void thread_set_next_wakeup ();
+void thread_set_next_wakeup (void);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
@@ -141,6 +145,10 @@ int thread_get_priority (void);
 void thread_set_priority (int);
 int thread_get_effective_priority (struct thread *);
 
+void thread_update_priority (struct thread *);
+void thread_update_recent_cpu (struct thread *);
+void thread_update_load_avg (void);
+
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
@@ -149,7 +157,7 @@ int thread_get_load_avg (void);
 bool priority_cmp (const struct list_elem*, const struct list_elem*, void*);
 bool before (const struct list_elem*, const struct list_elem*, void*);
 
-void thread_priority_temporarily_up ();
-void thread_priority_restore ();
+void thread_priority_temporarily_up (void);
+void thread_priority_restore (void);
 
 #endif /* threads/thread.h */
