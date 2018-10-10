@@ -104,6 +104,10 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  int i;
+  for (i = 0; i< 1<<10; i++)
+    thread_yield ();
+
   return -1;
 }
 
@@ -222,7 +226,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *cmd_line_input, void (**eip) (void), void **esp)
+load (const char *cmd_line_input, void (**eip) (void), void **esp) 
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -327,7 +331,7 @@ load (const char *cmd_line_input, void (**eip) (void), void **esp)
   /* Set up stack. */
   if (!setup_stack (esp, file_name, args))
     goto done;
-  test_stack (*esp);
+  /* test_stack (*esp); */
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
